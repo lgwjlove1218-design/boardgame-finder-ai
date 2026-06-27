@@ -6,6 +6,7 @@ from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 
 BASE_URL = "https://boardlife.co.kr"
+
 RANK_URLS = [
     "https://boardlife.co.kr/rank/all/1",
     "https://boardlife.co.kr/rank/all/2",
@@ -15,7 +16,9 @@ RANK_URLS = [
 def parse_players(text):
     match = re.search(r"(\d+)\s*-\s*(\d+)명", text)
     if match:
-        return int(match.group(1)), int(match.group(2)), f"{match.group(1)}~{match.group(2)}명"
+        min_p = int(match.group(1))
+        max_p = int(match.group(2))
+        return min_p, max_p, f"{min_p}~{max_p}명"
 
     match = re.search(r"(\d+)명", text)
     if match:
@@ -27,6 +30,8 @@ def parse_players(text):
 options = Options()
 options.add_argument("--headless=new")
 options.add_argument("--window-size=1400,1200")
+options.add_argument("--disable-gpu")
+options.add_argument("--no-sandbox")
 
 driver = webdriver.Chrome(options=options)
 
@@ -49,8 +54,8 @@ try:
                 continue
 
             link = BASE_URL + href if href.startswith("/") else href
-
             rank = len(games) + 1
+
             print(f"{rank}위 상세 수집 중: {name}")
 
             driver.get(link)
@@ -64,8 +69,8 @@ try:
 
             player_dd = detail_soup.select_one("dd.data.flex-div")
             if player_dd:
-                players_text = player_dd.get_text(" ", strip=True)
-                players_min, players_max, players_text = parse_players(players_text)
+                raw_players = player_dd.get_text(" ", strip=True)
+                players_min, players_max, players_text = parse_players(raw_players)
 
             # 장르
             genre = "정보 없음"
@@ -75,13 +80,12 @@ try:
 
             # 평점
             rating = "정보 없음"
-            rating_candidates = detail_soup.select(".rating, .score, .star-score, .average")
-            for cand in rating_candidates:
-                txt = cand.get_text(" ", strip=True)
-                m = re.search(r"\d+(\.\d+)?", txt)
+            rating_tag = detail_soup.select_one("a.game-rate.data")
+            if rating_tag:
+                rating_text = rating_tag.get_text(strip=True)
+                m = re.search(r"\d+(\.\d+)?", rating_text)
                 if m:
                     rating = m.group(0)
-                    break
 
             games.append({
                 "rank": rank,

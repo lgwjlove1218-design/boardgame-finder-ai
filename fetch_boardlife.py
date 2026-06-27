@@ -13,6 +13,7 @@ RANK_URLS = [
     "https://boardlife.co.kr/rank/all/3",
 ]
 
+
 def parse_players(text):
     match = re.search(r"(\d+)\s*-\s*(\d+)명", text)
     if match:
@@ -26,6 +27,23 @@ def parse_players(text):
         return n, n, f"{n}명"
 
     return None, None, "정보 없음"
+
+
+def extract_rating_from_rank_row(row):
+    text = row.get_text(" ", strip=True)
+
+    # 8.479 같은 평점 패턴 찾기
+    candidates = re.findall(r"\b\d\.\d{3}\b", text)
+    if candidates:
+        return candidates[-1]
+
+    # 혹시 8.4 형태만 있을 때
+    candidates = re.findall(r"\b\d\.\d\b", text)
+    if candidates:
+        return candidates[-1]
+
+    return "정보 없음"
+
 
 options = Options()
 options.add_argument("--headless=new")
@@ -41,7 +59,7 @@ try:
     for page_url in RANK_URLS:
         print(f"랭킹 페이지 수집 중: {page_url}")
         driver.get(page_url)
-        time.sleep(2)
+        time.sleep(3)
 
         soup = BeautifulSoup(driver.page_source, "html.parser")
         title_tags = soup.select("a.title.new-ellip")
@@ -56,10 +74,22 @@ try:
             link = BASE_URL + href if href.startswith("/") else href
             rank = len(games) + 1
 
-            print(f"{rank}위 상세 수집 중: {name}")
+            # 랭킹 페이지의 행 전체에서 평점 먼저 추출
+            row = tag.find_parent()
+            for _ in range(8):
+                if row and extract_rating_from_rank_row(row) == "정보 없음":
+                    row = row.find_parent()
+                else:
+                    break
+
+            rating = "정보 없음"
+            if row:
+                rating = extract_rating_from_rank_row(row)
+
+            print(f"{rank}위 상세 수집 중: {name} / 평점: {rating}")
 
             driver.get(link)
-            time.sleep(1.2)
+            time.sleep(2)
 
             detail_soup = BeautifulSoup(driver.page_source, "html.parser")
 
@@ -77,15 +107,6 @@ try:
             genre_tag = detail_soup.select_one('a.title[href^="/info/type/"]')
             if genre_tag:
                 genre = genre_tag.get_text(strip=True)
-
-            # 평점
-            rating = "정보 없음"
-            rating_tag = detail_soup.select_one("a.game-rate.data")
-            if rating_tag:
-                rating_text = rating_tag.get_text(strip=True)
-                m = re.search(r"\d+(\.\d+)?", rating_text)
-                if m:
-                    rating = m.group(0)
 
             games.append({
                 "rank": rank,
